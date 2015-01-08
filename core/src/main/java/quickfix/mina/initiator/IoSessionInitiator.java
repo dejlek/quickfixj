@@ -59,7 +59,7 @@ public class IoSessionInitiator {
     private Future<?> reconnectFuture;
     protected final static Logger log = LoggerFactory.getLogger("display."+IoSessionInitiator.class.getName());
 
-    public IoSessionInitiator(Session fixSession, SocketAddress[] socketAddresses,  SocketAddress localAddress, 
+    public IoSessionInitiator(Session fixSession, SocketAddress[] socketAddresses,  SocketAddress localAddress,
             int reconnectIntervalInSeconds[], ScheduledExecutorService executor,
             NetworkingOptions networkingOptions, EventHandlingStrategy eventHandlingStrategy,
             IoFilterChainBuilder userIoFilterChainBuilder, boolean sslEnabled, String keyStoreName,
@@ -68,7 +68,7 @@ public class IoSessionInitiator {
         final long reconnectIntervalInMillis[] = new long[reconnectIntervalInSeconds.length];
         for (int ii = 0; ii != reconnectIntervalInSeconds.length; ++ii) {
             reconnectIntervalInMillis[ii] = reconnectIntervalInSeconds[ii] * 1000L;
-        }        
+        }
         try {
             reconnectTask = new ConnectTask(sslEnabled, socketAddresses, localAddress, userIoFilterChainBuilder,
                     fixSession, reconnectIntervalInMillis, networkingOptions,
@@ -76,7 +76,7 @@ public class IoSessionInitiator {
         } catch (GeneralSecurityException e) {
             throw new ConfigError(e);
         }
-        log.info("[" + fixSession.getSessionID() + "] " + Arrays.asList(socketAddresses));        
+        log.info("[" + fixSession.getSessionID() + "] " + Arrays.asList(socketAddresses));
     }
 
     private static class ConnectTask implements Runnable {
@@ -185,7 +185,8 @@ public class IoSessionInitiator {
         }
 
         private void handleConnectException(Throwable e) {
-        	++connectionFailureCount;        
+        	++connectionFailureCount;
+            unresolveCurrentSocketAddress();
             while (e.getCause() != null) {
                 e = e.getCause();
             }
@@ -214,11 +215,21 @@ public class IoSessionInitiator {
             return socketAddress;
         }
 
+        // QFJ-822 Reset cached DNS resolution information on connection failure.
+        private void unresolveCurrentSocketAddress() {
+            int currentSocketAddress = (nextSocketAddressIndex + socketAddresses.length - 1) % socketAddresses.length;
+            SocketAddress socketAddress = socketAddresses[currentSocketAddress];
+            if (socketAddress instanceof InetSocketAddress) {
+                InetSocketAddress inetAddr = (InetSocketAddress) socketAddress;
+                socketAddresses[currentSocketAddress] = InetSocketAddress.createUnresolved(inetAddr.getHostString(), inetAddr.getPort());
+            }
+        }
+
         private boolean shouldReconnect() {
             return (ioSession == null || !ioSession.isConnected()) && isTimeForReconnect()
                     && (fixSession.isEnabled() && fixSession.isSessionTime());
         }
-        
+
         private long computeNextRetryConnectDelay() {
             int index = connectionFailureCount - 1;
             if (index < 0) index = 0;
@@ -230,7 +241,7 @@ public class IoSessionInitiator {
             }
             return millis;
         }
-        
+
 
         private boolean isTimeForReconnect() {
             return SystemTime.currentTimeMillis() - lastReconnectAttemptTime >= computeNextRetryConnectDelay();
@@ -252,7 +263,7 @@ public class IoSessionInitiator {
         public synchronized long getLastConnectTime() {
             return lastConnectTime;
         }
-        
+
         public Session getFixSession() {
             return fixSession;
         }
